@@ -20,118 +20,121 @@ require 'pathname'
 require 'inifile'
 require 'infra'
 require 'downloader'
-include GLI
 
-program_desc 'Framework for running projects. It helps you with managing state and restarting steps when necessary'
-version Infra::VERSION
+class InfraGLI
+  extend GLI::App
 
-desc 'Path to the directory with application'
-arg_name 'path'
-default_value nil
-flag [:d,:directory]
+  program_desc 'Framework for running projects. It helps you with managing state and restarting steps when necessary'
+  version Infra::VERSION
 
-desc 'Print project summary'
-command :summary do |c|
-  c.action do |global_options,options,args|
-    GUI.summary
-  end
-end
+  desc 'Path to the directory with application'
+  arg_name 'path'
+  default_value nil
+  flag [:d,:directory]
 
-desc 'Run project from beginning'
-command :run do |c|
-
-  c.action do |global_options,options,args|
-    FileUtils::cd global_options[:directory] do
-      APP.run
+  desc 'Print project summary'
+  command :summary do |c|
+    c.action do |global_options,options,args|
+      GUI.summary
     end
   end
-end
 
-desc 'Run project from last checkpoint'
-command :restart_from_last_checkpoint do |c|
-  c.action do |global_options,options,args|
-    APP.restart_from_last_checkpoint
-  end
-end
+  desc 'Run project from beginning'
+  command :run do |c|
 
-desc 'Show available steps'
-command :available_steps do |c|
-  c.action do |global_options,options,args|
-    APP.sequence.each {|step| puts step}
-  end
-end
-
-pre do |global,command,options,args|
-  next true if command.nil?
-  # Pre logic here
-  # Return true to proceed; false to abourt and not call the
-  # chosen command
-  # Use skips_pre before a command to skip this block
-  # on that command only
-  app_file            = 'app'
-  workspace_file      = 'workspace.prm'
-  run_params_file     = 'run_params.json'
-  params_file         = 'params.json'
-  project_root        = global[:directory] ? Pathname.new(global[:directory]).expand_path : Pathname.new(Dir.pwd).expand_path
-  global[:directory]  = project_root
-
-  fail "You do not seem to be in a project directory. App definition #{app_file} is missing." unless File.exist?(project_root + app_file)
-
-  pid = File.read(project_root + 'pid').chomp
-
-
-
-  params = JSON.parse(File.read(project_root + params_file))
-  params.merge!({"PID" => pid})
-  params.merge!({"PROJECT_URI" => "/gdc/projects/#{pid}"})
-  params.merge!({"PROJECT_NAME" => params["CUSTOMER"]})
-
-  APP = Infra::App.new({
-    :logger           => Logger.new(project_root + 'log' + 'run.log', 'daily'),
-    :home_directory   => project_root,
-    :run_params_file  => project_root + run_params_file,
-    :workspace_file   => project_root + workspace_file,
-    :is_production    => ENV['EC2DATA_STATUS'] == "prod" || ENV['HOSTNAME'] =~ /prod/,
-    :params           => params
-  })
-
-  APP.instance_eval(File.read(project_root + app_file))
-  if APP.is_production
-    APP.after_failure do
-      APP.mail_to_pager_duty
-    end
-    psql_config_file = "/mnt/ms/.postgres2cfg"
-    if !File.exist?(psql_config_file)
-      APP.mail_to_pager_duty("Creating psql logger","Configuration file for psql logger #{psql_config_file} is missing.") if !File.exist?(psql_config_file)
-    else
-
-      mode = (params["mode"].nil? ? '' : params["mode"])
-      psini = IniFile.new(Pathname.new(psql_config_file).expand_path, :parameter => '=' )
-      psini = psini[:default]
-      APP.psql_logger = GDC::PsqlLogger.new(psini["host"], psini["dbname"], psini["user"], psini["password"], "#{pid}",{:mode => mode})
+    c.action do |global_options,options,args|
+      FileUtils::cd global_options[:directory] do
+        APP.run
+      end
     end
   end
-  APP.initialize_params
-  APP.awake
-  GUI = Infra::AppGUI.new(APP)
-end
 
-post do |global,command,options,args|
-  # Post logic here
-  # Use skips_post before a command to skip this
-  # block on that command only
-end
+  desc 'Run project from last checkpoint'
+  command :restart_from_last_checkpoint do |c|
+    c.action do |global_options,options,args|
+      APP.restart_from_last_checkpoint
+    end
+  end
 
-on_error do |exception|
-  # binding.pry
-  # pp exception.backtrace
+  desc 'Show available steps'
+  command :available_steps do |c|
+    c.action do |global_options,options,args|
+      APP.sequence.each {|step| puts step}
+    end
+  end
+
+  pre do |global,command,options,args|
+    next true if command.nil?
+    # Pre logic here
+    # Return true to proceed; false to abourt and not call the
+    # chosen command
+    # Use skips_pre before a command to skip this block
+    # on that command only
+    app_file            = 'app'
+    workspace_file      = 'workspace.prm'
+    run_params_file     = 'run_params.json'
+    params_file         = 'params.json'
+    project_root        = global[:directory] ? Pathname.new(global[:directory]).expand_path : Pathname.new(Dir.pwd).expand_path
+    global[:directory]  = project_root
+
+    fail "You do not seem to be in a project directory. App definition #{app_file} is missing." unless File.exist?(project_root + app_file)
+
+    pid = File.read(project_root + 'pid').chomp
+
+
+
+    params = JSON.parse(File.read(project_root + params_file))
+    params.merge!({"PID" => pid})
+    params.merge!({"PROJECT_URI" => "/gdc/projects/#{pid}"})
+    params.merge!({"PROJECT_NAME" => params["CUSTOMER"]})
+
+    APP = Infra::App.new({
+      :logger           => Logger.new(project_root + 'log' + 'run.log', 'daily'),
+      :home_directory   => project_root,
+      :run_params_file  => project_root + run_params_file,
+      :workspace_file   => project_root + workspace_file,
+      :is_production    => ENV['EC2DATA_STATUS'] == "prod" || ENV['HOSTNAME'] =~ /prod/,
+      :params           => params
+    })
+
+    APP.instance_eval(File.read(project_root + app_file))
+    if APP.is_production
+      APP.after_failure do
+        APP.mail_to_pager_duty
+      end
+      psql_config_file = "/mnt/ms/.postgres2cfg"
+      if !File.exist?(psql_config_file)
+        APP.mail_to_pager_duty("Creating psql logger","Configuration file for psql logger #{psql_config_file} is missing.") if !File.exist?(psql_config_file)
+      else
+
+        mode = (params["mode"].nil? ? '' : params["mode"])
+        psini = IniFile.new(Pathname.new(psql_config_file).expand_path, :parameter => '=' )
+        psini = psini[:default]
+        APP.psql_logger = GDC::PsqlLogger.new(psini["host"], psini["dbname"], psini["user"], psini["password"], "#{pid}",{:mode => mode})
+      end
+    end
+    APP.initialize_params
+    APP.awake
+    GUI = Infra::AppGUI.new(APP)
+  end
+
+  post do |global,command,options,args|
+    # Post logic here
+    # Use skips_post before a command to skip this
+    # block on that command only
+  end
+
+  on_error do |exception|
+    # binding.pry
+    # pp exception.backtrace
     # pp exception.inspect
     # puts exception.message.color(:red)
     # false
-  # Error logic here
-  # return false to skip default error handling
-  # false
-  true
-end
+    # Error logic here
+    # return false to skip default error handling
+    # false
+    true
+  end
 
-exit GLI.run(ARGV)
+  exit InfraGLI.run(ARGV)
+end
