@@ -93,7 +93,7 @@ class InfraGLI
       :home_directory   => project_root,
       :run_params_file  => project_root + run_params_file,
       :workspace_file   => project_root + workspace_file,
-      :is_production    => ENV['EC2DATA_STATUS'] == "prod" || ENV['HOSTNAME'] =~ /prod/,
+      :is_production    => true,
       :params           => params
     })
 
