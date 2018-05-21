@@ -378,7 +378,10 @@ module Infra
 
     
     def run_steps(steps_to_run)
-      fail "ETL is already runnning" if File.exist?('running.pid')
+      if File.exist?('running.pid')
+        log_to_psql("log_error", 'start', 'ETL is already runnning')
+        fail "ETL is already runnning"
+      end
       begin
         FileUtils.touch('running.pid')
         @last_attempt = Time.now.to_i
